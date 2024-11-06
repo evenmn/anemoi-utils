@@ -7,6 +7,7 @@ import scipy
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
+from utils import *
 
 plt.rcParams["font.family"] = "serif"
 
@@ -15,70 +16,7 @@ MONTH_LENGTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 FREQ = 6
 STEP_PER_DAY = 24 // FREQ
 
-def wind_magnitude(ds, date):
-    """Convert wind in x- and y-dirs to
-    wind magnitude"""
-    u10, v10 = ds[date_to_index(date)][:,0]
-    w10 = np.sqrt(u10**2+v10**2)
-    return w10
-
-def str_to_idx(date: str) -> (int, int, int, int):
-    """Given a time str, return the year,
-    month, day and time as zero-indexed indices"""
-    y, m, dt = date.split('-')
-    d, t = dt.split('T')
-    y = int(y)
-    m = int(m)-1  # zero-indexed
-    d = int(d)-1  # zero-indexed
-    t = int(t) // FREQ
-    return y, m, d, t
-
-def idx_to_str(y: int, m: int, d: int, t: int) -> str:
-    """Inverse of above function"""
-    m += 1
-    d += 1
-    t *= FREQ
-    date = f"{y}-{m:>02}-{d:>02}T{t:>02}"
-    return date
-
-def following_steps(date: str, n: int) -> list[str]:
-    """Given a time str, return the following
-    n time strs"""
-    dates = [date]
-    y, m, d, t = str_to_idx(date)
-    for i in range(n):
-        add_t = 1  # always change t
-        proposed_t = t + add_t
-        add_d = proposed_t // STEP_PER_DAY # 1 if add to day
-        proposed_d = d + add_d
-        add_m = proposed_d // MONTH_LENGTH[m]
-        proposed_m = m + add_m
-        add_y = proposed_m // len(MONTH_LENGTH)
-        proposed_y = y + add_y
-        y = proposed_y  # year can increase infinite
-        m = proposed_m % len(MONTH_LENGTH)
-        d = proposed_d % MONTH_LENGTH[m]
-        t = proposed_t % STEP_PER_DAY
-        dates.append(idx_to_str(y,m,d,t))
-    return dates
-
-
-def date_to_index(date: str) -> int:
-    """Convert date to index.
-    Assuming no missing dates.
-    Date on the form 'YYYY-MM-DDTTT'"""
-    y, m, d, t = str_to_idx(date)
-    days_passed = sum(MONTH_LENGTH[:m]) + d
-    time_steps_passed = 4 * days_passed + t
-    return time_steps_passed
-
-def test_date_to_index():
-    """ """
-    assert date_to_index('2022-01-01T00') == 0
-    assert date_to_index('2022-02-01T00') == 124
-
-test_date_to_index()
-
+### ERA5
 
 def read_era5(filename, field):
     # Read ERA5 data (hard-coded for now)
@@ -91,26 +29,9 @@ def read_era5(filename, field):
     ds = open_dataset(filename, frequency="6h", start="2022-01-01", end="2022-12-31", select=select)
     return ds
 
-
-def read_npy(filename, field):
-    data = np.load(filename, allow_pickle=True)
-    data = data.item()
-    data = data[field][:,0]
-    return data
-
-
-def get_ens_data(time, field, ens_size, path):
-    """Get data for all ensemble members at a given time"""
-    ens_data = []
-    template = path + "{}/flat_era5_960hfc_{}.npy"
-    for i in trange(ens_size):
-        filename = template.format(i, time)
-        data = read_npy(filename, field)
-        ens_data.append(data)
-    ens_arr = np.asarray(ens_data)
-    ens_mean = ens_arr.mean(axis=0)
-    ens_var = (ens_size+1)/(ens_size-1) * ens_arr.var(axis=0)
-    return ens_arr, ens_mean, ens_var
+def get_era5_ds(path, resolution, field):
+    filename = f"{path}/aifs-ea-an-oper-0001-mars-{resolution}-1979-2022-6h-v6.zarr" 
+    return read_era5(filename, field)
 
 def get_era5_data(time, field, n_lead_times, ds):
     # ERA5
@@ -125,6 +46,35 @@ def get_era5_data(time, field, n_lead_times, ds):
             raise ValueError("")
     era5_arr = np.asarray(era5)
     return era5_arr
+
+
+### IO
+
+def read_npy(filename, field):
+    data = np.load(filename, allow_pickle=True)
+    data = data.item()
+    data = data[field][:,0]
+    return data
+
+### INFERENCE FIELDS
+
+def get_ens_data(time, field, ens_size, path):
+    """Get data for all ensemble members at a given time"""
+    ens_data = []
+    template = path + "{}/era5_72hfc_{}.npy" #flat_era5_960hfc_{}.npy"
+    for i in trange(ens_size):
+        filename = template.format(i, time)
+        data = read_npy(filename, field)
+        ens_data.append(data)
+    ens_arr = np.asarray(ens_data)
+    ens_mean = ens_arr.mean(axis=0)
+    if ens_size > 1:
+        ens_var = (ens_size+1)/(ens_size-1) * ens_arr.var(axis=0)
+    else:
+        ens_var = None
+    return ens_arr, ens_mean, ens_var
+
+## PLOT
 
 def plot_error_spread(times, field, ens_size, path, resolution='n320'):
     ds = get_era5_ds(resolution)
@@ -199,31 +149,8 @@ def plot_error_spread_accu(times, field, ens_size, path, resolution='n320'):
     """
 
 
-def mesh(resolution):
-    if resolution == 'o96':
-        era_lat_gridded_axis = np.arange(-90, 90, 1)
-        era_lon_gridded_axis = np.arange(0, 360, 1)
-    elif resolution == 'n320':
-        era_lat_gridded_axis = np.arange(-90, 90, 0.25)
-        era_lon_gridded_axis = np.arange(0, 360, 0.25)
-    era_lat_gridded, era_lon_gridded = np.meshgrid(era_lat_gridded_axis, era_lon_gridded_axis)
-    era_lat_gridded = era_lat_gridded.transpose()
-    era_lon_gridded = era_lon_gridded.transpose()
-    return era_lat_gridded, era_lon_gridded
 
-
-def interpolate(data, lat, lon, resolution):
-    """ """
-    era_lat_gridded, era_lon_gridded = mesh(resolution)
-
-    # Interpolate irregular ERA grid to regular lat/lon grid
-    icoords = np.asarray([lon, lat], dtype=np.float32).T
-    ocoords = np.asarray([era_lon_gridded.flatten(), era_lat_gridded.flatten()], dtype=np.float32).T
-
-    interpolator = scipy.interpolate.NearestNDInterpolator(icoords, data) # input coordinated
-    q = interpolator(ocoords)  # output coordinates
-    q = q.reshape(era_lat_gridded.shape)
-    return q
+### PLOT
 
 def plot(ax, data, lat_grid, lon_grid, **kwargs):
     """Plot data using pcolormesh on redefined ax"""
@@ -231,17 +158,9 @@ def plot(ax, data, lat_grid, lon_grid, **kwargs):
     ax.add_feature(cfeature.BORDERS, linestyle=':')
     ax.add_feature(cfeature.LAND, edgecolor='black')
     ax.add_feature(cfeature.OCEAN, edgecolor='black')
-    ax.pcolormesh(lon_grid, lat_grid, data, **kwargs)
-    #ax.contourf(lon_grid, lat_grid, data)
-
-def get_era5_ds(resolution):
-    if resolution.lower() == 'o96':
-        ds = read_era5("/leonardo_work/DestE_330_24/anemoi/datasets/ERA5/aifs-ea-an-oper-0001-mars-o96-1979-2022-6h-v6.zarr", field)
-    elif resolution.lower() == 'n320':
-        ds = read_era5("/leonardo_work/DestE_330_24/anemoi/datasets/ERA5/aifs-ea-an-oper-0001-mars-n320-1979-2022-6h-v6.zarr", field)
-    else:
-        raise ValueError
-    return ds
+    im = ax.pcolormesh(lon_grid, lat_grid, data, **kwargs)
+    #im = ax.contourf(lon_grid, lat_grid, data)
+    return im
 
 def imshow_error_spread(time, field, ens_size, path, lead_time=0, resolution='n320'):
     ds = get_era5_ds(resolution)
@@ -267,54 +186,159 @@ def imshow_error_spread(time, field, ens_size, path, lead_time=0, resolution='n3
     plt.tight_layout()
     plt.show()
 
-def imshow_field(time, field, path, lead_time=0, resolution='n320'):
-    ds = get_era5_ds(resolution)
-    lat_grid, lon_grid = mesh(resolution)
+def resolution_auto(ens_mean):
+    flat = len(ens_mean.shape) == 2
 
-    # cmap/norm
-    bounds = [0, 0.1, 0.5, 1, 2, 4, 8, 16, 32]
-    bounds = [0, 0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 4]
-    cmap = 'turbo' #matplotlib.colors.LinearSegmentedColormap.from_list("my_cmap", ["white", "white", "#3c78d8", "#00ffff", "#008800", "#ffff00", "red"])
-    norm = None #matplotlib.colors.BoundaryNorm(bounds, cmap.N, extend = 'both')
+    match ens_mean.shape[1]:
+        case 40320:
+            resolution = 'o96'
+            assert flat
+        case 180:
+            resolution = 'o96'
+        case 500000:
+            resolution = 'n320'
+            assert flat
+        case 720:
+            resolution = 'n320'
+        case _:
+            raise ValueError
 
-    nx = ny = 2
-    ens_size = nx*ny
-    fig, axs = plt.subplots(nx,3,figsize=(6,4), subplot_kw={'projection': ccrs.PlateCarree()})
-    data_ = get_era5_data(time, field, lead_time+1, ds)
-    print(data_.shape)
+    return flat, resolution
+
+def panel_config_auto(ens_size, extra_panels):
+    """Configure panel orientation, given
+    number of ensemble members."""
+    n_panels = ens_size
+    n_panels += extra_panels
+
+    conf_map = [None,
+                (1,1), (1,2), (2,2), (2,2),
+                (2,3), (2,3), (2,4), (2,4),
+                (3,3), (3,4), (3,4), (3,4),
+                (4,4), (4,4), (4,4), (4,4),
+               ]
+    panel_limit = len(conf_map) - 1
+
+    if n_panels > panel_limit:
+        print(f"Panel limit reached, continuing with {panel_limit} panels")
+        n_panels = panel_limit
+        ens_size = panel_limit - extra_panels
+
     """
-    data_ = read_npy('era5_168hfc_2024-01-02T00.npy', field)
+    match n_panels:
+        case 1:
+            n = (1,1)
+        case 2:
+            n = (1,2)
+        case 3 | 4:
+            n = (2,2)
+        case 5 | 6:
+            n = (2,3)
+        case 7 | 8:
+            n = (2,4)
+        case 9:
+            n = (3,3)
+        case 10 | 11 | 12:
+            n = (3,4)
+        case 13 | 14 | 15 | 16:
+            n = (4,4)
+        case _:
+            print("Continuing with 16 panels")
+            ens_size = 16 - extra_panels
     """
-    data_ = data_[lead_time]
-    data_ = interpolate(data_, ds.latitudes, ds.longitudes, resolution)
-    plot(axs[1,2], data_, lat_grid, lon_grid, cmap=cmap, norm=norm, shading='auto')
-    axs[1,2].set_title("ERA5")
-    
+    n = conf_map[n_panels]
+    return n, ens_size
+
+
+def imshow_field(time: str, 
+                 field: str, 
+                 path: str,
+                 path_era: str = None, 
+                 lead_time: str = 0,
+                 ens_size: str = 1,
+                 plot_ens_mean: bool = False,
+                 **kwargs,
+                 ) -> None:
+    """Plot ensemble field and potentially compare to ERA5.
+    Support for ensemble members.
+    TODO: Collect lat and lon independently of ERA5
+    """
+    include_era = False if path_era is None else True
+
+    # get (ensemble) data
+    n, ens_size = panel_config_auto(ens_size, include_era + plot_ens_mean)
     ens_arr, ens_mean, ens_var = get_ens_data(time, field, ens_size, path)
     n_lead_times = len(ens_mean)
-
-    for i in range(ens_size):
-        j = i//nx
-        k = i%nx
-        # interpolate
-        data = interpolate(ens_arr[i, lead_time], ds.latitudes, ds.longitudes, resolution)
-
-        # plot
-        plot(axs[j,k], data, lat_grid, lon_grid, cmap=cmap, norm=norm, shading='auto')
-        axs[j,k].set_title(f"Member {i}")
-    data = interpolate(ens_mean[lead_time], ds.latitudes, ds.longitudes, resolution)
-    plot(axs[0,2], data, lat_grid, lon_grid, cmap=cmap, norm=norm, shading='auto')
-    axs[0,2].set_title("Ensemble mean")
     
+    flat, resolution = resolution_auto(ens_mean)
+    lat_grid, lon_grid = mesh(resolution)
+
+    # temporal solution to get correct lat and lon, need a better solution
+    ds = get_era5_ds(path_era, resolution, field)
+
+    # find vmin and vmax
+    vmin = ens_arr.min()
+    vmax = ens_arr.max()
+    if include_era:
+        data_era5 = get_era5_data(time, field, lead_time+1, ds)
+        vmin = min(vmin, data_era5.min())
+        vmax = max(vmax, data_era5.max())
+
+    fig, axs = plt.subplots(*n, figsize=(6,4), squeeze=False, subplot_kw={'projection': ccrs.PlateCarree()})
+    
+    # member panel(s)
+    k = 0
+    for i in range(n[0]):
+        for j in range(n[1]):
+            data = ens_arr[k, lead_time]
+            if flat:
+                data = interpolate(data, ds.latitudes, ds.longitudes, resolution)
+
+            # plot
+            im = plot(axs[i,j], data, lat_grid, lon_grid, shading='auto', vmin=vmin, vmax=vmax, **kwargs)
+            axs[i,j].set_title(f"Member {k}")
+            k += 1
+            if k >= ens_size:
+                break
+        else:
+            continue
+        break
+
+    # extra panels
+    if plot_ens_mean:
+        data = ens_mean[lead_time]
+        if flat:
+            data = interpolate(data, ds.latitudes, ds.longitudes, resolution)
+        sec_last_ax = axs[n[0]-1, n[1]-2]
+        im = plot(sec_last_ax, data, lat_grid, lon_grid, shading='auto', vmin=vmin, vmax=vmax, **kwargs)
+        sec_last_ax.set_title("Ensemble mean")
+
+    if include_era:
+        data = data_era5[lead_time]
+        data = interpolate(data, ds.latitudes, ds.longitudes, resolution)
+        last_ax = axs[n[0]-1, n[1]-1]
+        im = plot(last_ax, data, lat_grid, lon_grid, shading='auto', vmin=vmin, vmax=vmax, **kwargs)
+        last_ax.set_title("ERA5")
+
+    #TODO: Add custom field for comparison
+    #data_ = read_npy('era5_168hfc_2024-01-02T00.npy', field)
+    
+
+    # show plot
     fig.suptitle(field + f" + {6*lead_time}h")
     plt.tight_layout()
+    fig.colorbar(im, ax=axs.ravel().tolist())
     plt.show()
 
 if __name__ == "__main__":
-    ens_size = 4
     field = 'wind_speed_10m' #'precipitation_amount_acc6h'
     #field = 'air_temperature_2m'
 
+    # cmap/norm
+    #bounds = [0, 0.1, 0.5, 1, 2, 4, 8, 16, 32]
+    #bounds = [0, 0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 4]
+    cmap = 'turbo' #matplotlib.colors.LinearSegmentedColormap.from_list("my_cmap", ["white", "white", "#3c78d8", "#00ffff", "#008800", "#ffff00", "red"])
+    norm = None #matplotlib.colors.BoundaryNorm(bounds, cmap.N, extend = 'both')
 
     times = [
         #"2022-01-02T00",
@@ -330,7 +354,9 @@ if __name__ == "__main__":
         #"2022-11-02T00",
         ]
 
-    path = "/leonardo_work/DestE_330_24/anemoi/experiments/ni2_stage_a/inference/epoch_099/predictions/"
+    #path = "/leonardo_work/DestE_330_24/anemoi/experiments/ni2_stage_a/inference/epoch_099/predictions/"
+    path = "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni1_a/inference/epoch_080/predictions/"
+    path_era = "/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/"
     #plot_error_spread_accu(times, field, ens_size, path)
     #imshow_error_spread(times[0], field, ens_size, path)
-    imshow_field(times[0], field, path, lead_time=27, resolution='o96')
+    imshow_field(times[0], field, path, path_era, lead_time=10, ens_size=4, plot_ens_mean=True, cmap='turbo')

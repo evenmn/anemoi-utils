@@ -73,12 +73,10 @@ def key_to_arr(key, table, keywords):
 if __name__ == "__main__":
     val_loss = []
     for filename in [
-            'logs/o96_ens_select_2.out',
-            'logs/o96_ens_select_3.out',
-            'logs/o96_ens_select_4.out',
+            '/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/stage_a_2.out',
         ]:
         table, keywords = make_table(filename)
-        val_loss.append(key_to_arr('val_fkcrps_step', table, keywords))
+        val_loss.append(key_to_arr('val_fkcrps_epoch', table, keywords))
 
     val_loss = np.concatenate(val_loss, axis=0)
 
