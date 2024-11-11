@@ -1,0 +1,70 @@
+from glob import glob
+
+import numpy as np
+from tqdm import trange, tqdm
+from anemoi.datasets import open_dataset
+
+from utils import *
+
+def read_era5(filename, fields):
+    """Read ERA5 data, given filename and
+    fields subset to read. Return anemoi-
+    datasets object."""
+    select = []
+    for field in fields:
+        select.extend(map_keys[field]['era5'])
+    ds = open_dataset(filename, frequency="6h", start="2022-01-01", end="2022-12-31", select=select)
+    return ds
+
+def get_era5_data(path, time, resolution, fields, lead_times):
+    """Fetch data from dataset."""
+    filename = f"{path}/aifs-ea-an-oper-0001-mars-{resolution}-1979-2022-6h-v6.zarr"
+    ds = read_era5(filename, fields)
+    lead_time_stamps = following_steps(time, max(lead_times))
+    era5 = {}
+    for field in fields:
+        era5[field] = []
+        for lead_time_stamp in tqdm(lead_time_stamps):
+            era5[field].append(map_keys[field]['transform'](ds, lead_time_stamp))
+        era5[field] = np.asarray(era5[field])
+    return era5
+
+def read_npy(filename):
+    """Read npy file and return dict."""
+    data = np.load(filename, allow_pickle=True)
+    data = data.item()
+    return data
+
+def get_data(path, time, ens_size):
+    """
+    Args:
+        path: str
+            Path to directory with npy file.
+            Expects subdirs if ens_size is not None
+
+    Outputs:
+        data_dict: dict
+            Dict in the form of
+            data_dict[field][member,lead_time,coords]
+    """
+    data_dict_ = {}
+    if ens_size is None:
+        # Flat folder structure
+        filename = glob(path + f"*{time}.npy")[0]
+        data_dict = read_npy(filename)
+        for key, value in data_dict.items():
+            data_dict_[key] = value[:,0][np.newaxis]
+    else:
+        # npy files in subdirs
+        for i in trange(ens_size):
+            filename = glob(path + f"{i}/*{time}.npy")[0]
+            data_dict = read_npy(filename)
+            for key, value in data_dict.items():
+                try:
+                    data_dict_[key] = np.concatenate((data_dict_[key], value[:,0][np.newaxis]))
+                except KeyError:
+                    data_dict_[key] = value[:,0][np.newaxis]
+    if 'air_temperature_2m' in data_dict_.keys():
+        data_dict_['air_temperature_2m'] -= 273.15
+    return data_dict_
+
