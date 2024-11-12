@@ -22,6 +22,11 @@ def wind_magnitude(ds, date):
     w10 = np.sqrt(u10**2+v10**2)
     return w10
 
+def precip_accu6(ds, date):
+    """Precip m to mm."""
+    p_idx = ds.variables.index('tp')
+    return ds[date_to_index(date)][p_idx,0] * 1000
+
 map_keys = {
     'air_temperature_2m': {
         'era5': ['2t'],
@@ -32,6 +37,11 @@ map_keys = {
         'era5': ['10u', '10v'], 
         'units': 'm/s', 
         'transform': wind_magnitude,
+    },
+    'precipitation_amount_acc6h': {
+        'era5': ['tp'],
+        'units': 'mm',
+        'transform': precip_accu6,
     },
 }
 

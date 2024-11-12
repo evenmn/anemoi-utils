@@ -16,7 +16,7 @@ def read_era5(filename, fields):
     ds = open_dataset(filename, frequency="6h", start="2022-01-01", end="2022-12-31", select=select)
     return ds
 
-def get_era5_data(path, time, resolution, fields, lead_times):
+def get_era5_data(path, time, fields, lead_times, resolution):
     """Fetch data from dataset."""
     filename = f"{path}/aifs-ea-an-oper-0001-mars-{resolution}-1979-2022-6h-v6.zarr"
     ds = read_era5(filename, fields)
@@ -35,7 +35,8 @@ def read_npy(filename):
     data = data.item()
     return data
 
-def get_data(path, time, ens_size):
+    #data_dict = get_data(paths[0], time, fields, lead_times, ens_size)
+def get_data(path, time, fields, lead_times, ens_size):
     """
     Args:
         path: str
@@ -53,18 +54,27 @@ def get_data(path, time, ens_size):
         filename = glob(path + f"*{time}.npy")[0]
         data_dict = read_npy(filename)
         for key, value in data_dict.items():
-            data_dict_[key] = value[:,0][np.newaxis]
+            data_dict_[key] = value[lead_times,0][np.newaxis]
     else:
         # npy files in subdirs
         for i in trange(ens_size):
-            filename = glob(path + f"{i}/*{time}.npy")[0]
+            file_pattern = path + f"{i}/*{time}.npy"
+            filenames = glob(file_pattern)
+            if len(filenames) < 1:
+                raise ValueError(f"No file matches file pattern '{file_pattern}'!")
+            filename = filenames[0]  # pick first match if several matches exist 
             data_dict = read_npy(filename)
             for key, value in data_dict.items():
+                if not key in fields:
+                    continue
                 try:
-                    data_dict_[key] = np.concatenate((data_dict_[key], value[:,0][np.newaxis]))
+                    data_dict_[key] = np.concatenate((data_dict_[key], value[lead_times,0][np.newaxis]))
                 except KeyError:
-                    data_dict_[key] = value[:,0][np.newaxis]
+                    data_dict_[key] = value[lead_times,0][np.newaxis]
+            del data_dict
     if 'air_temperature_2m' in data_dict_.keys():
         data_dict_['air_temperature_2m'] -= 273.15
+    if 'precipitation_amount_acc6h' in data_dict_.keys():
+        data_dict_['precipitation_amount_acc6h'] *= 1000
     return data_dict_
 
