@@ -17,6 +17,8 @@ def field_comparison(
         ens_size: int = None,
         plot_ens_mean: bool = False,
         norm: bool = False,
+        xlim = None,
+        ylim = None,
         **kwargs,
     ) -> None:
     """Plot ensemble field and potentially compare to ERA5.
@@ -44,7 +46,7 @@ def field_comparison(
     for field in fields:
         units = map_keys[field]['units']
         for lead_idx, lead_time in enumerate(lead_times):
-            fig, axs = plt.subplots(*n, figsize=(6,4), squeeze=False, subplot_kw={'projection': ccrs.PlateCarree()})
+            fig, axs = plt.subplots(*n, figsize=(6,8), squeeze=False, subplot_kw={'projection': ccrs.PlateCarree()})
 
             # find vmin and vmax
             vmin = np.inf
@@ -59,7 +61,9 @@ def field_comparison(
             vmin += cen
             vmax -= cen
             if norm:
-                boundaries = np.logspace(0.001, np.log(0.04*vmax), cmap.N-1)
+                boundaries = np.logspace(np.log10(0.5), np.log10(0.5*vmax), cmap.N-2)
+                boundaries = np.insert(boundaries, 0, 0.0)
+                #boundaries = [0.0, 0.5, 1, 2, 4, 8, 16, 32]
                 norm = matplotlib.colors.BoundaryNorm(boundaries, cmap.N, extend='both')
                 kwargs['norm'] = norm
             else:
@@ -79,6 +83,8 @@ def field_comparison(
                     # plot
                     im = plot(axs[j,i], data, lat_grid, lon_grid, **kwargs)
                     axs[j,i].set_title(f"Member {j}")
+                    axs[j,i].set_xlim(xlim)
+                    axs[j,i].set_ylim(ylim)
 
                 # extra panels
                 if plot_ens_mean:
@@ -87,13 +93,17 @@ def field_comparison(
                         data = interpolate(data, lats, lons, resolution)
                     im = plot(axs[j+1,i], data, lat_grid, lon_grid, **kwargs)
                     axs[j+1,i].set_title("Ensemble mean")
+                    axs[j+1,i].set_xlim(xlim)
+                    axs[j+1,i].set_ylim(ylim)
                 del data_dict, data
 
             if include_era:
                 data = data_era5[field][lead_time]
                 data = interpolate(data, lats, lons, resolution)
-                im = plot(axs[j+2,i], data, lat_grid, lon_grid, **kwargs)
+                im = plot(axs[j+2,0], data, lat_grid, lon_grid, **kwargs)
                 axs[j+2,0].set_title("ERA5")
+                axs[j+2,0].set_xlim(xlim)
+                axs[j+2,0].set_ylim(ylim)
 
             #TODO: Add custom field for comparison
             #data_ = read_npy('era5_168hfc_2024-01-02T00.npy', field)
@@ -113,10 +123,13 @@ if __name__ == "__main__":
 
     #path = "/leonardo_work/DestE_330_24/anemoi/experiments/ni2_stage_a/inference/epoch_099/predictions/"
     paths = [
-        "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_b_fix/inference/epoch_010/predictions/",
-        #"/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni1_b_leo/inference/epoch_010/predictions/",
-        #"/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/silly_variable_10/inference/epoch_010/predictions/",
-        #"/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/hollow_rainbow_10/inference/epoch_010/predictions/",
+        "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_b_fix/inference/epoch_010_short/predictions/",
+        #"/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni1_b_2/inference/epoch_010/predictions/",
+        "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni1_b_leo/inference/epoch_010/predictions/",
         ]
     path_era = "/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/"
-    field_comparison("2022-01-13T00", fields, paths, path_era, lead_times=[12], ens_size=2, plot_ens_mean=True, cmap=cmap, norm=True)
+
+    # zoom
+    xlim = (-65, 30)
+    ylim = (20, 75)
+    field_comparison("2022-01-13T00", fields, paths, path_era, lead_times=[12], ens_size=3, plot_ens_mean=True, cmap=cmap, norm=True, xlim=xlim, ylim=ylim)
