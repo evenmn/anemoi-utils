@@ -24,7 +24,7 @@ def make_table(*file_paths):
     lines = content.split('\n')
 
     numbers_float = []
-    all_keywords = []
+    all_keywords = ["epoch", "iteration", "elapsed_time", "estimated_time", "speed"]
     for line in tqdm(lines):
         if not line.startswith('Epoch'):
             continue
@@ -44,10 +44,8 @@ def make_table(*file_paths):
             next_ = 6
         lst.extend(map(float, numbers[next_:]))
         numbers_float.append(lst)
-        keywords = extract_keywords(line)
-
-    perm_keywords = ["epoch", "iteration", "elapsed_time", "estimated_time", "speed"]
-    all_keywords = perm_keywords + keywords
+        all_keywords.extend(extract_keywords(line))
+        all_keywords = list(dict.fromkeys(all_keywords))
 
     # pad
     key_len = len(all_keywords)
@@ -71,16 +69,32 @@ def key_to_arr(key, table, keywords):
                                                     
 
 if __name__ == "__main__":
+    epochs = []
     val_loss = []
     for filename in [
-            '/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/stage_a_2.out',
+            '/leonardo_work/DestE_330_24/enordhag/ens-score-anemoi/ni1_a_4m_bs32/output.out',
+            '/leonardo_work/DestE_330_24/enordhag/ens-score-anemoi/ni1_a_4m_bs32/output_2.out',
+            '/leonardo_work/DestE_330_24/enordhag/ens-score-anemoi/ni1_a_4m_bs32/output_6.out',
+            '/leonardo_work/DestE_330_24/enordhag/ens-score-anemoi/ni1_a_4m_bs32/output_8.out',
         ]:
         table, keywords = make_table(filename)
+        epochs.append(key_to_arr('epoch', table, keywords))
         val_loss.append(key_to_arr('val_fkcrps_epoch', table, keywords))
 
+
+    epochs = np.concatenate(epochs, axis=0)
     val_loss = np.concatenate(val_loss, axis=0)
+
+    epochs = epochs[np.isfinite(val_loss)]
+    val_loss = val_loss[np.isfinite(val_loss)]
+
+    xy = (epochs, val_loss)
+    np.save('/leonardo/home/userexternal/enordhag/loss_ni1_a_4m_bs32.npy', xy)
 
     import matplotlib.pyplot as plt
 
-    plt.plot(val_loss)
+    plt.plot(*xy)
+    plt.xlabel("Epochs")
+    plt.ylabel("Kernel CRPS")
+    plt.title("Noise Injector 1, 4 members, batch size 32")
     plt.show()
