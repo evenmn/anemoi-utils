@@ -35,8 +35,22 @@ def read_npy(filename):
     data = data.item()
     return data
 
-    #data_dict = get_data(paths[0], time, fields, lead_times, ens_size)
-def get_data(path, time, fields, lead_times, ens_size):
+def process_file(i, path, time):
+    """For parallel processing."""
+    file_pattern = path + f"{i}/*{time}.npy"
+    filenames = glob(file_pattern)
+    if len(filenames) < 1:
+        raise ValueError(f"No file matches file pattern '{file_pattern}'!")
+    filename = filenames[0]  # pick first match if several matches exist
+    data_dict = read_npy(filename)
+    return data_dict
+    
+def parallel_process(ens_size, path, time, pool):
+    arguments = [(i, path, time) for i in range(ens_size)]
+    data_dict = pool.starmap(process_file, arguments)
+    return data_dict
+
+def get_data(path, time, fields, lead_times, ens_size, pool):
     """
     Args:
         path: str
@@ -57,13 +71,8 @@ def get_data(path, time, fields, lead_times, ens_size):
             data_dict_[key] = value[lead_times,0][np.newaxis]
     else:
         # npy files in subdirs
-        for i in trange(ens_size):
-            file_pattern = path + f"{i}/*{time}.npy"
-            filenames = glob(file_pattern)
-            if len(filenames) < 1:
-                raise ValueError(f"No file matches file pattern '{file_pattern}'!")
-            filename = filenames[0]  # pick first match if several matches exist 
-            data_dict = read_npy(filename)
+        data_list = parallel_process(ens_size, path, time, pool)
+        for data_dict in data_list:
             for key, value in data_dict.items():
                 if not key in fields:
                     continue
@@ -71,7 +80,6 @@ def get_data(path, time, fields, lead_times, ens_size):
                     data_dict_[key] = np.concatenate((data_dict_[key], value[lead_times,0][np.newaxis]))
                 except KeyError:
                     data_dict_[key] = value[lead_times,0][np.newaxis]
-            del data_dict
     if 'air_temperature_2m' in data_dict_.keys():
         data_dict_['air_temperature_2m'] -= 273.15
     if 'precipitation_amount_acc6h' in data_dict_.keys():
