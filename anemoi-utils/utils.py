@@ -7,43 +7,63 @@ MONTH_LENGTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 FREQ = 6
 STEP_PER_DAY = 24 // FREQ
 
-def kelvin2celsius(ds, date):
+def kelvin2celsius(ds, slc):
     """Convert Kelvin to Celsius."""
     t_idx = ds.variables.index('2t')
-    return ds[date_to_index(date)][t_idx,0] - 273.15
+    return ds[slc][:,t_idx,0] - 273.15
 
-def wind_magnitude(ds, date):
+def wind_magnitude(ds, slc):
     """Convert wind in x- and y-dirs to
     wind magnitude"""
     u_idx = ds.variables.index('10u')
     v_idx = ds.variables.index('10v')
-    u10 = ds[date_to_index(date)][u_idx,0]
-    v10 = ds[date_to_index(date)][v_idx,0]
+    u10 = ds[slc][:,u_idx,0]
+    v10 = ds[slc][:,v_idx,0]
     w10 = np.sqrt(u10**2+v10**2)
     return w10
 
-def precip_accu6(ds, date):
+def precip_accu6(ds, slc):
     """Precip m to mm."""
     p_idx = ds.variables.index('tp')
-    return ds[date_to_index(date)][p_idx,0] * 1000
+    return ds[slc][:,p_idx,0] * 1000
+
+def mslp_(ds, slc):
+    """Get mslp, no transform."""
+    m_idx = ds.variables.index('msl')
+    return ds[slc][:,m_idx,0]
 
 map_keys = {
     'air_temperature_2m': {
         'era5': ['2t'],
         'units': 'C',
         'transform': kelvin2celsius,
+        'thresholds': [-30, -20, -10, 0, 10, 20, 25, 30, 35, 40, 45, 50],
+        'long_name': 'Air temperature 2m',
     },
     'wind_speed_10m': {
         'era5': ['10u', '10v'], 
         'units': 'm/s', 
         'transform': wind_magnitude,
+        'thresholds': [10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.6],
+        'long_name': 'Wind speed 10m',
     },
     'precipitation_amount_acc6h': {
         'era5': ['tp'],
         'units': 'mm',
         'transform': precip_accu6,
+        'thresholds': [0.5, 1, 5, 10, 20, 30, 40, 50],
+        'long_name': 'Precipitation',
+    },
+    'air_pressure_at_sea_level': {
+        'era5': ['msl'],
+        'units': 'hPa',
+        'transform': mslp_,
+        'thresholds': [970, 980, 990, 1000, 1010, 1020, 1030],
+        'long_name': 'Mean sea level pressure',
     },
 }
+
+# TODO: Replace date functions below with pandas functions. (ex. pd.date_range)
 
 def str_to_idx(date: str) -> (int, int, int, int):
     """Given a time str, return the year,
@@ -128,8 +148,12 @@ def interpolate(data, lat, lon, resolution):
     q = q.reshape(era_lat_gridded.shape)
     return q
 
-def resolution_auto(data_dict):
-    shape = data_dict[list(data_dict.keys())[0]].shape
+def resolution_auto(ds):
+    """Reference is a data array, which has shape
+        (lead_times, npoints) if flat
+        (lead_times, lats, lons) if not flat
+    """
+    shape = ds.shape
     flat = len(shape) == 3
     match shape[2]:
         case 40320:
