@@ -111,7 +111,6 @@ def get_data_nc(path, time, ens_size):
             data_dict[field][member,lead_time,coords]
     """
     time = time.strftime('%Y-%m-%dT%H')
-    print(time)
     if ens_size is None:
         filename = glob(path + f"*{time}.nc")[0]
         ds = xr.open_dataset(filename)
