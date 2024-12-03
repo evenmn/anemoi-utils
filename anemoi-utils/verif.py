@@ -29,6 +29,7 @@ def verif(
 
     fields = np.atleast_1d(fields)
 
+    # convert times to indices to be called from anemoi datasets
     times_idx = (times - times[0]).total_seconds() / 3600 // 6
 
     ds = get_data_nc(path, times[0], ens_size)
@@ -69,10 +70,10 @@ def verif(
             data_sorted = np.sort(data_, axis=0)
             cdf_ = np.empty((len(thresholds), nlead_time, nlocation))
             pit_ = np.empty((nlead_time, nlocation))
-            for i in range(data_.shape[1]):
-                for j in range(data_.shape[2]):
-                    cdf_[:,i,j] = np.interp(thresholds, data_[:,i,j], p_)
-                    pit_[i,j] = np.interp(fcst_[i,j], data_[:,i,j], p_)
+            for i in range(nlead_time):
+                for k in range(nlocation):
+                    cdf_[:,i,k] = np.interp(thresholds, data_sorted[:,i,k], p_)
+                    pit_[i,k] = np.interp(obs_[i,k], data_sorted[:,i,k], p_)
 
             lat = np.array(ds.latitude[::every])
             lon = np.array(ds.longitude[::every])
@@ -91,7 +92,7 @@ def verif(
                 'quantile': qs,
                 'lat':      ('location', lat),
                 'lon':      ('location', lon),
-                'altitude': ('location', np.zeros(nlocation)),
+                'altitude': ('location', np.zeros(nlocation)),  # altitude = z/9.81
             }
             data_vars = {
                 'obs':      (('time', 'leadtime', 'location'), obs_[None]),
@@ -99,14 +100,14 @@ def verif(
                 'cdf':      (('time', 'leadtime', 'location', 'threshold'), cdf_.transpose(1,2,0)[None]),
                 'x':        (('time', 'leadtime', 'location', 'quantile'), x_[None]),
                 'pit':      (('time', 'leadtime', 'location'), pit_[None]),
-                'ensemble': (('time', 'leadtime', 'location', 'ensemble_member'), data_.transpose(1,2,0)[None]),
+                #'ensemble': (('time', 'leadtime', 'location', 'ensemble_member'), data_.transpose(1,2,0)[None]),
                 'crps':     (('time', 'leadtime', 'location'), crps_[None])
             }
             ds_ = xr.Dataset(data_vars=data_vars, coords=coords, attrs=attrs)
 
-            if len(dss) > j:
+            try:
                 dss[j] = xr.concat([dss[j], ds_], dim='time')
-            else:
+            except IndexError:
                 dss.append(ds_)
 
     for j, field in enumerate(fields):
@@ -120,9 +121,9 @@ if __name__ == "__main__":
 
     fields = ['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level']
 
-    times = pd.date_range(start='2022-01-02T00', end='2022-03-24T12', freq='1W')
+    times = pd.date_range(start='2022-01-01T00', end='2022-12-31T18', freq='4W')
 
-    path = "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_b_fix/inference/epoch_010_incomplete/predictions/"
+    path = "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_b_fix/inference/epoch_010/predictions/"
     path_era = "/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/"
     path_out = '/users/nordhage/'
-    verif(times, fields, path, path_era, ens_size=4, every=500, path_out=path_out, label='spatial_noise')
+    verif(times, fields, path, path_era, ens_size=12, every=500, path_out=path_out, label='spatial_noise')
