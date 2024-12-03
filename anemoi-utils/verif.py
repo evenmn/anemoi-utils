@@ -2,6 +2,7 @@ import os
 import datetime
 
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 import xarray as xr
 
@@ -26,6 +27,9 @@ def verif(
     if label is None:
         now = datetime.datetime.now()
         label = now.strftime("%Y%m%d%H%M%S")
+
+    if isinstance(times, list):
+        times = pd.to_datetime(times)
 
     fields = np.atleast_1d(fields)
 
@@ -117,13 +121,13 @@ def verif(
         dss[j].close()
 
 if __name__ == "__main__":
-    import pandas as pd
 
     fields = ['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level']
 
     times = pd.date_range(start='2022-01-01T00', end='2022-12-31T18', freq='4W')
+    times = ['2022-01-01T06', '2022-01-09T00', '2022-02-15T00', '2022-02-21T00', '2022-03-31T00', '2022-04-07T00', '2022-05-14T00', '2022-05-21T00', '2022-06-27T06', '2022-07-04T00', '2022-08-10T12', '2022-08-17T00', '2022-09-23T18', '2022-10-01T00', '2022-11-07T00', '2022-11-15T00']
 
-    path = "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_b_fix/inference/epoch_010/predictions/"
+    path = "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_a_fix/inference/epoch_099/predictions/"
     path_era = "/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/"
     path_out = '/users/nordhage/'
-    verif(times, fields, path, path_era, ens_size=12, every=500, path_out=path_out, label='spatial_noise')
+    verif(times, fields, path, path_era, ens_size=20, every=1, path_out=path_out, label='spatial_noise_o96')
