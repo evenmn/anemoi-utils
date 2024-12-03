@@ -34,6 +34,7 @@ def mslp_(ds, slc):
 
 map_keys = {
     'air_temperature_2m': {
+        'standard': 't2m',
         'era5': ['2t'],
         'units': 'C',
         'transform': kelvin2celsius,
@@ -41,6 +42,7 @@ map_keys = {
         'long_name': 'Air temperature 2m',
     },
     'wind_speed_10m': {
+        'standard': 'ws10m',
         'era5': ['10u', '10v'], 
         'units': 'm/s', 
         'transform': wind_magnitude,
@@ -48,6 +50,7 @@ map_keys = {
         'long_name': 'Wind speed 10m',
     },
     'precipitation_amount_acc6h': {
+        'standard': 'precip6h',
         'era5': ['tp'],
         'units': 'mm',
         'transform': precip_accu6,
@@ -55,6 +58,7 @@ map_keys = {
         'long_name': 'Precipitation',
     },
     'air_pressure_at_sea_level': {
+        'standard': 'mslp',
         'era5': ['msl'],
         'units': 'hPa',
         'transform': mslp_,

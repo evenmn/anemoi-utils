@@ -1,10 +1,9 @@
 import os
+import datetime
 
 import numpy as np
 from tqdm import tqdm
 import xarray as xr
-import pandas as pd
-import scipy as sp
 
 from data import get_data_nc, get_era5_data, read_era5
 from utils import *
@@ -19,9 +18,15 @@ def verif(
         ens_size: int = None,
         qs: list[float] = [0.1, 0.25, 0.5, 0.75, 0.9],
         every: int = 10000,
-        outfile_prefix: str = "/users/nordhage/",
+        path_out: str = "/users/nordhage/",
+        label: str = None,
         **kwargs,
     ) -> None:
+
+    if label is None:
+        now = datetime.datetime.now()
+        label = now.strftime("%Y%m%d%H%M%S")
+
     fields = np.atleast_1d(fields)
 
     times_idx = (times - times[0]).total_seconds() / 3600 // 6
@@ -39,7 +44,7 @@ def verif(
     dss = []
     pbar = tqdm(zip(times, times_idx), total=len(times))
     for time, time_idx in pbar:
-        pbar.set_description(f"Processing: {time.strftime('%Y-%m-%dT%H')}")
+        pbar.set_description(time.strftime('%Y-%m-%dT%H'))
         if time != times[0]:
             ds = get_data_nc(path, time, ens_size)
         data_era5 = get_era5_data(ds_era5, int(time_idx), fields, lead_time)
@@ -59,13 +64,15 @@ def verif(
                 ens_var_ += np.sum(np.abs(data_[i][None] - data_[i+1:]), axis=0)
             crps_ = mae_ - ens_var_ / (ens_size * (ens_size - 1))
 
-            q_vals_ = np.quantile(data_, qs, axis=0).transpose(1,2,0)
+            x_ = np.quantile(data_, qs, axis=0).transpose(1,2,0)
 
             data_sorted = np.sort(data_, axis=0)
-            f = sp.interpolate.interp1d(p_, data_sorted, axis=0, bounds_error=False, fill_value=(0,1))
-            x_ = f(thresholds)
-
-            #pit_ = f(fcst_)
+            cdf_ = np.empty((len(thresholds), nlead_time, nlocation))
+            pit_ = np.empty((nlead_time, nlocation))
+            for i in range(data_.shape[1]):
+                for j in range(data_.shape[2]):
+                    cdf_[:,i,j] = np.interp(thresholds, data_[:,i,j], p_)
+                    pit_[i,j] = np.interp(fcst_[i,j], data_[:,i,j], p_)
 
             lat = np.array(ds.latitude[::every])
             lon = np.array(ds.longitude[::every])
@@ -89,10 +96,9 @@ def verif(
             data_vars = {
                 'obs':      (('time', 'leadtime', 'location'), obs_[None]),
                 'fcst':     (('time', 'leadtime', 'location'), fcst_[None]),
-                'cdf':      (('time', 'leadtime', 'location', 'threshold'), x_.transpose(1,2,0)[None]),
-                #'pdf':      (('time', 'leadtime', 'location', 'threshold'), np.zeros((nlead_time, nlocation, len(thresholds)))[None]),
-                'x':        (('time', 'leadtime', 'location', 'quantile'), q_vals_[None]),
-                #'pit':      (('time', 'leadtime', 'location'), pit_[None]),
+                'cdf':      (('time', 'leadtime', 'location', 'threshold'), cdf_.transpose(1,2,0)[None]),
+                'x':        (('time', 'leadtime', 'location', 'quantile'), x_[None]),
+                'pit':      (('time', 'leadtime', 'location'), pit_[None]),
                 'ensemble': (('time', 'leadtime', 'location', 'ensemble_member'), data_.transpose(1,2,0)[None]),
                 'crps':     (('time', 'leadtime', 'location'), crps_[None])
             }
@@ -104,16 +110,19 @@ def verif(
                 dss.append(ds_)
 
     for j, field in enumerate(fields):
-        filename = outfile_prefix + f'_{field}.nc'
+        subfolder = map_keys[field]['standard']
+        filename = path_out + f'/{subfolder}/{label}.nc'
         dss[j].to_netcdf(filename, mode='w', unlimited_dims=['time'])
         dss[j].close()
 
 if __name__ == "__main__":
+    import pandas as pd
+
     fields = ['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level']
 
     times = pd.date_range(start='2022-01-02T00', end='2022-03-24T12', freq='1W')
 
-    path = "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni1_b_new/inference/epoch_010/predictions/"
+    path = "/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_b_fix/inference/epoch_010_incomplete/predictions/"
     path_era = "/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/"
-    outfile_prefix = '/users/nordhage/ni1_b_new'
-    verif(times, fields, path, path_era, ens_size=4, every=500, outfile_prefix=outfile_prefix)
+    path_out = '/users/nordhage/'
+    verif(times, fields, path, path_era, ens_size=4, every=500, path_out=path_out, label='spatial_noise')
