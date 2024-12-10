@@ -20,9 +20,9 @@ def precip_accu6(ds, slc):
     return ds[slc][:,p_idx,0] * 1000
 
 def mslp_(ds, slc):
-    """Get mslp, no transform."""
+    """Get mslp, convert from Pa to hPa."""
     m_idx = ds.variables.index('msl')
-    return ds[slc][:,m_idx,0]
+    return ds[slc][:,m_idx,0] / 100
 
 map_keys = {
     'air_temperature_2m': {
