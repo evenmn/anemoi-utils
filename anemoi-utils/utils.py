@@ -1,8 +1,11 @@
 import numpy as np
 import scipy.interpolate
+from scipy.ndimage.filters import gaussian_filter
 import cartopy.feature as cfeature
+import xarray as xr
 
 def mesh(lat, lon, increment):
+
     lat = np.arange(lat.min(), lat.max(), increment)
     lon = np.arange(lon.min(), lon.max(), increment)
     lat_grid, lon_grid = np.meshgrid(lat, lon)
@@ -44,13 +47,27 @@ def panel_config_auto(ens_size, extra_panels):
     n = conf_map[n_panels]
     return n, ens_size
 
-def plot(ax, data, lat_grid, lon_grid, **kwargs):
+def plot(ax, data, lat_grid, lon_grid, contour=None, **kwargs):
     """Plot data using pcolormesh on redefined ax"""
-    ax.add_feature(cfeature.COASTLINE)
-    ax.add_feature(cfeature.BORDERS, linestyle=':')
+    ax.add_feature(cfeature.COASTLINE, edgecolor='black')
+    ax.add_feature(cfeature.BORDERS, linestyle=':', edgecolor='black')
     ax.add_feature(cfeature.LAND, edgecolor='black')
     ax.add_feature(cfeature.OCEAN, edgecolor='black')
+    ax.grid()
     im = ax.pcolormesh(lon_grid, lat_grid, data, **kwargs)
-    #im = ax.contourf(lon_grid, lat_grid, data)
+    if contour is not None:
+        contour = gaussian_filter(contour, 2)
+        im_cntr = ax.contour(lon_grid, lat_grid, contour, linewidths=1, colors='magenta')
+        ax.clabel(im_cntr, inline=True, fontsize=8, fmt='%1.0f')
+    ax.set_aspect(2)
     return im
 
+def flatten(ds, fields):
+    """Flatten xarray dataset."""
+    for field in fields:
+        ens_size, lead_time, ylen, xlen = ds[field].shape
+        ds[field] = xr.DataArray(np.array(ds[field]).reshape(ens_size, lead_time, -1), dims=('members', 'leadtimes', 'points'))
+    ds['altitude'] = np.ravel(ds.altitude)
+    ds['latitude'] = np.ravel(ds.latitude)
+    ds['longitude'] = np.ravel(ds.longitude)
+    return ds

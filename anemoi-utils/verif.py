@@ -8,13 +8,14 @@ import xarray as xr
 
 from data import get_data, get_era5_data, read_era5
 from map_keys import map_keys
+from utils import flatten
 
 
 def verif(
         times: list[str] or str or pd.Timestamp or pd.DatetimeIndex,
         fields: list[str] or str,
         path: str,
-        file_era: str,
+        file_ref: str,
         lead_time: int = slice(None),
         ens_size: int = None,
         qs: list[float] = [0.1, 0.25, 0.5, 0.75, 0.9],
@@ -35,7 +36,7 @@ def verif(
         path: str
             Path to directory where files to be analysed are found. 
             (maybe add information about NetCDF format and folder structure?)
-        file_era: str
+        file_ref: str
             ERA5 analysis file to be compared to
         lead_time: int
             Number of lead times to include. All lead times by default
@@ -60,16 +61,18 @@ def verif(
 
     if isinstance(times, (list, tuple, np.ndarray)):
         times = pd.to_datetime(times)
+    times = times.sort_values()
 
     # convert times to indices to be called from anemoi datasets
     times_idx = (times - times[0]).total_seconds() / 3600 // 6
 
     ds = get_data(path, times[0], ens_size)
 
-    assert ds[fields[0]].ndim==3, "Interpolated fields should not be used for verification"
-
+    if ds.latitude.ndim == 2:
+        ds = flatten(ds, fields)
     ens_size, lead_time, points = ds[fields[0]].shape
-    ds_era5 = read_era5(fields, file_era, times, lead_time)
+
+    ds_ref = read_era5(fields, file_ref, times, lead_time)
 
     # for cumulative density function (CDF)
     p_ = np.linspace(0, 1, ens_size)
@@ -80,7 +83,9 @@ def verif(
         pbar.set_description(time.strftime('%Y-%m-%dT%H'))
         if time != times[0]:
             ds = get_data(path, time, ens_size)
-        data_era5 = get_era5_data(ds_era5, int(time_idx), fields, lead_time)
+            if ds.latitude.ndim == 2:
+                ds = flatten(ds, fields)
+        data_ref = get_era5_data(ds_ref, int(time_idx), fields, lead_time)
         for j, field in enumerate(fields):
             units = map_keys[field]['units']
             thresholds = map_keys[field]['thresholds']
@@ -89,7 +94,7 @@ def verif(
             data_ = np.array(ds[field][...,::every])
             nmember, nlead_time, nlocation = data_.shape
 
-            obs_ = data_era5[field][...,::every]
+            obs_ = data_ref[field][...,::every]
             fcst_ = np.mean(data_, axis=0)
             mae_ = np.abs(fcst_-obs_)
             ens_var_ = 0
@@ -107,6 +112,7 @@ def verif(
                     cdf_[:,i,k] = np.interp(thresholds, data_sorted[:,i,k], p_, left=0, right=1)
                     pit_[i,k] = np.interp(obs_[i,k], data_sorted[:,i,k], p_, left=0, right=1)
 
+            alt = np.array(ds.altitude[::every])
             lat = np.array(ds.latitude[::every])
             lon = np.array(ds.longitude[::every])
 
@@ -122,9 +128,9 @@ def verif(
                 'location': np.arange(nlocation),
                 'threshold': thresholds,
                 'quantile': qs,
+                'altitude': ('location', alt),
                 'lat':      ('location', lat),
                 'lon':      ('location', lon),
-                'altitude': ('location', np.zeros(nlocation)),  # altitude = z/9.81
             }
             data_vars = {
                 'obs':      (('time', 'leadtime', 'location'), obs_[None]),
@@ -150,12 +156,12 @@ def verif(
 
 if __name__ == "__main__":
     verif(
-        times=pd.date_range(start='2022-01-01T00', end='2022-12-31T18', freq='4W'),
+        times=['2022-01-01T12','2022-01-01T18','2022-01-02T00','2022-01-02T06'], #pd.date_range(start='2022-01-03T00', end='2022-12-31T18', freq='4W'),
         fields=['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level'], 
-        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_a_fix/inference/epoch_099/predictions/",
-        file_era="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/aifs-ea-an-oper-0001-mars-o96-1979-2022-6h-v6.zarr", 
-        ens_size=20,
-        every=10, 
+        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c/inference/epoch_077/predictions/",
+        file_ref="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", 
+        ens_size=4,
+        every=500,
         path_out='/pfs/lustrep3/scratch/project_465000454/nordhage/verification/',
-        label='spatial_noise_o96',
+        label='spatial_noise_n320_2p5km',
     )
