@@ -29,7 +29,7 @@ def get_era5_data(ds, time_idx, fields, lead_time):
     return era5
 
 
-def get_data(path, time, ens_size):
+def get_data(path, time, ens_size, file_prefix=''):
     """
     Args:
         path: str
@@ -45,17 +45,16 @@ def get_data(path, time, ens_size):
     if ens_size is None:
         filename = glob(path + f"*{time}.nc")[0]
         ds = xr.open_dataset(filename)
-        ds = ds.expand_dims('members').assign_coords(members=1)
+        ds = ds.expand_dims('members').assign_coords(members=[1])
     else:
         # load datasets
         datasets = []
         for i in range(ens_size):
             try:
-                filename = glob(path + f"{i}/*{time}.nc")[0]
+                filename = glob(path + f"{i}/{file_prefix}*{time}.nc")[0]
             except IndexError:
-                print(f"No inference file found for time stamp {time}, member {i}")
-                exit(1)
-            ds = xr.open_dataset(filename, chunks={'lead_times': 'auto', 'points': 'auto'})
+                raise Exception(f"No inference file found for time stamp {time}, member {i}")
+            ds = xr.open_dataset(filename) #, chunks={'lead_times': 'auto', 'points': 'auto'})
             datasets.append(ds)
 
         datasets_with_members = [ds.expand_dims('members').assign_coords(members=[i]) for i, ds in enumerate(datasets)]
@@ -66,4 +65,6 @@ def get_data(path, time, ens_size):
         ds['air_temperature_2m'] -= 273.15
     if 'precipitation_amount_acc6h' in ds.variables:
         ds['precipitation_amount_acc6h'] *= 1000
+    if 'air_pressure_at_sea_level' in ds.variables:
+        ds['air_pressure_at_sea_level'] /= 100
     return ds
