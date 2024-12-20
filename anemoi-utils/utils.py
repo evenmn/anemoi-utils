@@ -11,17 +11,19 @@ def mesh(lat, lon, increment):
     lat_grid, lon_grid = np.meshgrid(lat, lon)
     return lat_grid.T, lon_grid.T
 
+def inter(data, lat, lon, eval_):
+    """ """
+    icoords = np.asarray([lon, lat], dtype=np.float32).T
+    interpolator =  scipy.interpolate.NearestNDInterpolator(icoords, data)
+    return interpolator(eval_)
+
+
 def interpolate(data, lat, lon, increment):
     """ """
-    era_lat_gridded, era_lon_gridded = mesh(lat, lon, increment)
-
-    # Interpolate irregular ERA grid to regular lat/lon grid
-    icoords = np.asarray([lon, lat], dtype=np.float32).T
-    ocoords = np.asarray([era_lon_gridded.flatten(), era_lat_gridded.flatten()], dtype=np.float32).T
-
-    interpolator = scipy.interpolate.NearestNDInterpolator(icoords, data) # input coordinates
-    q = interpolator(ocoords)  # output coordinates
-    q = q.reshape(era_lat_gridded.shape)
+    lat_grid, lon_grid = mesh(lat, lon, increment)
+    ocoords = np.asarray([lon_grid.flatten(), lat_grid.flatten()], dtype=np.float32).T
+    q = inter(data, lat, lon, ocoords)
+    q = q.reshape(lat_grid.shape)
     return q
 
 def panel_config_auto(ens_size, extra_panels):

@@ -8,7 +8,9 @@ import xarray as xr
 
 from data import get_data, get_era5_data, read_era5
 from map_keys import map_keys
-from utils import flatten
+from utils import flatten, inter
+
+from yrlib_utils import get_station_metadata, get_available_timeseries, get
 
 
 def verif(
@@ -72,7 +74,14 @@ def verif(
         ds = flatten(ds, fields)
     ens_size, lead_time, points = ds[fields[0]].shape
 
-    ds_ref = read_era5(fields, file_ref, times, lead_time)
+    # find reference
+    if '.' not in file_ref:
+        # assuming frost reference
+        ref = 'frost'
+        station_ids = get_available_timeseries(frost_client_id=file_ref, variable="air_temperature")
+    else:
+        ref = 'zarr'
+        ds_ref = read_era5(fields, file_ref, times, lead_time)
 
     # for cumulative density function (CDF)
     p_ = np.linspace(0, 1, ens_size)
@@ -81,21 +90,46 @@ def verif(
     pbar = tqdm(zip(times, times_idx), total=len(times))
     for time, time_idx in pbar:
         pbar.set_description(time.strftime('%Y-%m-%dT%H'))
+        unix = int(time.timestamp())
         if time != times[0]:
             ds = get_data(path, time, ens_size)
             if ds.latitude.ndim == 2:
                 ds = flatten(ds, fields)
-        data_ref = get_era5_data(ds_ref, int(time_idx), fields, lead_time)
+        if ref == "zarr":
+            data_ref = get_era5_data(ds_ref, int(time_idx), fields, lead_time)
         for j, field in enumerate(fields):
             units = map_keys[field]['units']
             thresholds = map_keys[field]['thresholds']
             long_name = map_keys[field]['long_name']
 
-            data_ = np.array(ds[field][...,::every])
+            if ref == "frost":
+                frost_name = map_keys[field]['frost']
+                obs_times, obs_locations, obs_ = get(unix, unix + 6*lead_time*3600, frost_name, file_ref, station_ids=station_ids)
+                obs_ = obs_[::6][:-1]  # Frost returns hourly data
+                alt = [loc.elev for loc in obs_locations] 
+                lat = [loc.lat for loc in obs_locations] 
+                lon = [loc.lon for loc in obs_locations] 
+                loc = [loc.id for loc in obs_locations] 
+                eval_ = np.asarray([lat, lon], dtype=np.float32).T
+                data_ = np.array(ds[field])
+                data__ = []
+                for m in range(ens_size):
+                    data__.append([])
+                    for t in range(lead_time):
+                        data__[-1].append(inter(data_[m,t], ds.latitude, ds.longitude, eval_))
+                data_ = np.asarray(data__)
+
+            elif ref == "zarr":
+                data_ = np.array(ds[field][...,::every])
+                obs_ = data_ref[field][...,::every]
+                alt = np.array(ds.altitude[::every])
+                lat = np.array(ds.latitude[::every])
+                lon = np.array(ds.longitude[::every])
+                loc = np.arange(data_.shape[2])
             nmember, nlead_time, nlocation = data_.shape
 
-            obs_ = data_ref[field][...,::every]
-            fcst_ = np.mean(data_, axis=0)
+            fcst_ = data_[0] #np.mean(data_, axis=0)
+            ens_mean_ = np.mean(data_, axis=0)
             mae_ = np.abs(fcst_-obs_)
             ens_var_ = 0
             for i in range(ens_size):
@@ -112,9 +146,6 @@ def verif(
                     cdf_[:,i,k] = np.interp(thresholds, data_sorted[:,i,k], p_, left=0, right=1)
                     pit_[i,k] = np.interp(obs_[i,k], data_sorted[:,i,k], p_, left=0, right=1)
 
-            alt = np.array(ds.altitude[::every])
-            lat = np.array(ds.latitude[::every])
-            lon = np.array(ds.longitude[::every])
 
             attrs = {
                 'long_name': long_name,
@@ -123,9 +154,9 @@ def verif(
                 'verif_version': "1.0.0",
             }
             coords = {
-                'time': [int(time.timestamp())],
+                'time': [unix],
                 'leadtime': 6 * np.arange(nlead_time, dtype=float),
-                'location': np.arange(nlocation),
+                'location': loc,
                 'threshold': thresholds,
                 'quantile': qs,
                 'altitude': ('location', alt),
@@ -135,6 +166,7 @@ def verif(
             data_vars = {
                 'obs':      (('time', 'leadtime', 'location'), obs_[None]),
                 'fcst':     (('time', 'leadtime', 'location'), fcst_[None]),
+                'ens_mean':     (('time', 'leadtime', 'location'), ens_mean_[None]),
                 'cdf':      (('time', 'leadtime', 'location', 'threshold'), cdf_.transpose(1,2,0)[None]),
                 'x':        (('time', 'leadtime', 'location', 'quantile'), x_[None]),
                 'pit':      (('time', 'leadtime', 'location'), pit_[None]),
@@ -156,11 +188,30 @@ def verif(
 
 if __name__ == "__main__":
     verif(
-        times=['2022-01-01T12','2022-01-01T18','2022-01-02T00','2022-01-02T06'], #pd.date_range(start='2022-01-03T00', end='2022-12-31T18', freq='4W'),
+        times=[
+            '2022-01-01T12', 
+            '2022-01-22T18', 
+            '2022-02-27T12',
+            '2022-03-04T00',
+            '2022-04-08T12',
+            '2022-04-16T00',
+            '2022-05-18T12',
+            '2022-05-26T00',
+            '2022-06-27T12',
+            '2022-07-05T00',
+            '2022-08-06T12',
+            '2022-08-14T00',
+            '2022-09-26T00',
+            '2022-10-02T12',
+            '2022-11-05T00',
+            '2022-11-12T12',
+        ], #pd.date_range(start='2022-01-03T00', end='2022-12-31T18', freq='4W'),
         fields=['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level'], 
         path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c/inference/epoch_077/predictions/",
-        file_ref="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", 
-        ens_size=4,
+        #file_ref="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", 
+        file_ref="295a464e-e25d-43b5-a560-40d07296c8ea",
+        lead_time=40,
+        ens_size=10,
         every=500,
         path_out='/pfs/lustrep3/scratch/project_465000454/nordhage/verification/',
         label='spatial_noise_n320_2p5km',
