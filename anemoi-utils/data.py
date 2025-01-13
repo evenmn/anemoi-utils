@@ -16,7 +16,7 @@ def read_era5(fields, filename, times, lead_time, freq='6h'):
     for field in fields:
         select.extend(map_keys[field]['era5'])
     start = times[0]
-    end = times[-1]+pd.Timedelta(hours=int(freq[:-1]) * lead_time)
+    end = times[-1] + pd.Timedelta(hours=int(freq[:-1]) * lead_time)
     ds = open_dataset(filename, frequency=freq, start=start, end=end, select=select)
     return ds
 
@@ -67,4 +67,17 @@ def get_data(path, time, ens_size, file_prefix=''):
         ds['precipitation_amount_acc6h'] *= 1000
     if 'air_pressure_at_sea_level' in ds.variables:
         ds['air_pressure_at_sea_level'] /= 100
+    return ds
+
+def read_verif(filename):
+    """
+    Read verif format. Using xarray if nc, pandas if txt
+    """
+    if filename.endswith('.nc'):
+        ds = xr.open_dataset(filename)
+    elif filename.endswith('.txt'):
+        df = pd.read_csv(filename)
+        ds = df.to_xarray()
+    else:
+        raise Exception
     return ds

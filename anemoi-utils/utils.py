@@ -11,10 +11,14 @@ def mesh(lat, lon, increment):
     lat_grid, lon_grid = np.meshgrid(lat, lon)
     return lat_grid.T, lon_grid.T
 
-def inter(data, lat, lon, eval_):
+def inter_(data, lat, lon):
     """ """
     icoords = np.asarray([lon, lat], dtype=np.float32).T
-    interpolator =  scipy.interpolate.NearestNDInterpolator(icoords, data)
+    return scipy.interpolate.NearestNDInterpolator(icoords, data)
+
+def inter(data, lat, lon, eval_):
+    """ """
+    interpolator = inter_(data, lat, lon)
     return interpolator(eval_)
 
 

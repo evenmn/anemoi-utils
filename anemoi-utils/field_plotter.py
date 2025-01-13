@@ -233,9 +233,9 @@ def field_plotter(
                 standard = map_keys[field]['standard']
                 extent = 'global' if (xlim is None or  ylim is None) else f'lim{xlim[0]}-{xlim[1]}-{ylim[0]}-{ylim[1]}'
                 filename = f"{path_out}/{standard}_{time.strftime('%Y%m%d%H')}_+{lead_time_hours:03d}_{extent}.png"
-                plt.savefig(filename)
-            #plt.show()
-            plt.close()
+                #plt.savefig(filename)
+            plt.show()
+            #plt.close()
 
 if __name__ == "__main__":
     import matplotlib
@@ -243,13 +243,13 @@ if __name__ == "__main__":
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("my_cmap", ["white", "white", "#3c78d8", "#00ffff", "#008800", "#ffff00", "red"])
 
     field_plotter(
-        time="2022-01-01T12", 
-        fields=['precipitation_amount_acc6h'], 
-        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c/inference/epoch_077/predictions/", 
+        time="2022-01-02T12", 
+        fields=['precipitation_amount_acc6h'], #['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level'], 
+        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c_roll6/inference/epoch_009/predictions/", 
         #file_truth="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/aifs-ea-an-oper-0001-mars-n320-1979-2022-6h-v6.zarr", 
         file_truth="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", 
-        lead_times=range(40),
-        ens_size=4,
+        lead_times=[10],
+        ens_size=5,
         plot_ens_mean=False,
         cmap=cmap,
         norm=True,
