@@ -79,6 +79,7 @@ def field_plotter(
     if resolution is None:
         resolution = 0.25 if ds[fields[0]].shape[-1] == 542080 else 1
 
+    regular = False
     if ds.latitude.ndim==1:
         if xlim is not None and ylim is not None:
             ds = ds.where(
@@ -92,7 +93,10 @@ def field_plotter(
         lat = np.array(ds.longitude)
         lat_grid, lon_grid = mesh(lat, lon, resolution) 
     elif ds.latitude.ndim==2:
-        lat_grid, lon_grid = ds.latitude, ds.longitude
+        regular = True
+        lat_grid, lon_grid = ds.y, ds.x #ds.latitude, ds.longitude
+        lat_center = float((ds.latitude.max()-ds.latitude.min()) / 2.)
+        lon_center = float((ds.longitude.max()-ds.longitude.min()) / 2.)
     else:
         raise ValueError
 
@@ -104,6 +108,11 @@ def field_plotter(
             fields_ = np.append(fields, 'air_pressure_at_sea_level')
         ds_truth = read_era5(fields_, file_truth, [time], max(lead_times)+1, freq=freq)
         data_truth = get_era5_data(ds_truth, 0, fields_, max(lead_times)+1)
+        if regular:
+            x = len(ds.x)
+            y = len(ds.y)
+            for key, value in data_truth.items():
+                data_truth[key] = value.reshape(-1, y, x)
         if ds.latitude.ndim == 1:
             lat_grid_truth, lon_grid_truth = mesh(lat_truth, lon_truth, resolution)
         elif ds.latitude.ndim == 2:
@@ -111,8 +120,8 @@ def field_plotter(
             for field in fields_:
                 data_truth[field] = data_truth[field].reshape(max(lead_times)+1, ylen, xlen)
 
-            lat_grid_truth = ds_truth.latitudes.reshape(ylen, xlen)
-            lon_grid_truth = ds_truth.longitudes.reshape(ylen, xlen)
+            lat_grid_truth = ds.y #ds_truth.latitudes.reshape(ylen, xlen)
+            lon_grid_truth = ds.x #ds_truth.longitudes.reshape(ylen, xlen)
         else:
             raise ValueError
 
@@ -163,7 +172,11 @@ def field_plotter(
                 kwargs['vmax'] = vmax
             kwargs['shading'] = 'auto'
 
-            fig, axs = plt.subplots(*n, figsize=(8,6), squeeze=False, subplot_kw={'projection': ccrs.PlateCarree()})
+            if regular:
+                #fig, axs = plt.subplots(*n, figsize=(8,6), squeeze=False, subplot_kw={'projection': ccrs.LambertConformal(central_latitude=lat_center, central_longitude=lon_center)})
+                fig, axs = plt.subplots(*n, figsize=(8,6), squeeze=False, subplot_kw={'projection': ccrs.LambertConformal(central_longitude = 15, central_latitude = 63.3, standard_parallels = (63.3, 63.3))})
+            else:
+                fig, axs = plt.subplots(*n, figsize=(8,6), squeeze=False, subplot_kw={'projection': ccrs.PlateCarree()})
             
             # member panel(s)
             data_contour = None
@@ -180,7 +193,7 @@ def field_plotter(
                             data_contour = interpolate(data_contour, lat, lon, resolution)
 
                     # plot
-                    im = plot(axs[i,j], data, lat_grid, lon_grid, contour=data_contour, **kwargs)
+                    im = plot(axs[i,j], data, lon_grid, lat_grid, contour=data_contour, **kwargs)
                     axs[i,j].set_title(f"Member {k}")
                     axs[i,j].set_xlim(xlim)
                     axs[i,j].set_ylim(ylim)
@@ -203,7 +216,7 @@ def field_plotter(
                         data_contour = interpolate(data_contour, lat, lon, resolution)
 
                 sec_last_ax = axs[n[0]-1, n[1]-2]
-                im = plot(sec_last_ax, data, lat_grid, lon_grid, contour=data_contour, **kwargs)
+                im = plot(sec_last_ax, data, lon_grid, lat_grid, contour=data_contour, **kwargs)
                 sec_last_ax.set_title("Ensemble mean")
                 sec_last_ax.set_xlim(xlim)
                 sec_last_ax.set_ylim(ylim)
@@ -214,11 +227,11 @@ def field_plotter(
                     data = interpolate(data, ds_truth.latitudes, ds_truth.longitudes, resolution)
                 if pressure_contour:
                     data_contour = data_truth['air_pressure_at_sea_level'][lead_idx]
-                    if data.ndim == 1:
+                    if data_contour.ndim == 1:
                         data_contour = interpolate(data_contour, ds_truth.latitudes, ds_truth.longitudes, resolution)
 
                 last_ax = axs[n[0]-1, n[1]-1]
-                im = plot(last_ax, data, lat_grid_truth, lon_grid_truth, contour=data_contour, **kwargs)
+                im = plot(last_ax, data, lon_grid_truth, lat_grid_truth, contour=data_contour, **kwargs)
                 last_ax.set_title("Truth")
                 last_ax.set_xlim(xlim)
                 last_ax.set_ylim(ylim)
@@ -245,10 +258,11 @@ if __name__ == "__main__":
     field_plotter(
         time="2022-01-02T12", 
         fields=['precipitation_amount_acc6h'], #['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level'], 
-        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c_roll6/inference/epoch_009/predictions/", 
+        #path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c_roll2_warmup10/inference/epoch_009/predictions/", 
+        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c/inference/epoch_009/predictions/", 
         #file_truth="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/ERA5/aifs-ea-an-oper-0001-mars-n320-1979-2022-6h-v6.zarr", 
         file_truth="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", 
-        lead_times=[10],
+        lead_times=[40],
         ens_size=5,
         plot_ens_mean=False,
         cmap=cmap,
@@ -257,6 +271,6 @@ if __name__ == "__main__":
         #ylim=(25,73),
         resolution=0.25,
         path_out = '/pfs/lustrep3/scratch/project_465000454/nordhage/verification/ni3_c',
-        pressure_contour=True,
+        pressure_contour=False,
         file_prefix='meps',
     )

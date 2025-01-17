@@ -53,19 +53,19 @@ def panel_config_auto(ens_size, extra_panels):
     n = conf_map[n_panels]
     return n, ens_size
 
-def plot(ax, data, lat_grid, lon_grid, contour=None, **kwargs):
+def plot(ax, data, x, y, contour=None, **kwargs):
     """Plot data using pcolormesh on redefined ax"""
     ax.add_feature(cfeature.COASTLINE, edgecolor='black')
     ax.add_feature(cfeature.BORDERS, linestyle=':', edgecolor='black')
     ax.add_feature(cfeature.LAND, edgecolor='black')
     ax.add_feature(cfeature.OCEAN, edgecolor='black')
-    ax.grid()
-    im = ax.pcolormesh(lon_grid, lat_grid, data, **kwargs)
+    #ax.grid()
+    im = ax.pcolormesh(x, y, data, **kwargs)
     if contour is not None:
         contour = gaussian_filter(contour, 2)
-        im_cntr = ax.contour(lon_grid, lat_grid, contour, linewidths=1, colors='magenta')
+        im_cntr = ax.contour(x, y, contour, linewidths=1, colors='magenta')
         ax.clabel(im_cntr, inline=True, fontsize=8, fmt='%1.0f')
-    ax.set_aspect(2)
+    #ax.set_aspect(2)
     return im
 
 def flatten(ds, fields):
