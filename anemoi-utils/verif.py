@@ -10,7 +10,7 @@ from data import get_data, get_era5_data, read_era5, read_verif
 from map_keys import map_keys
 from utils import flatten, inter
 
-from yrlib_utils import get_station_metadata, get_available_timeseries, get
+from yrlib_utils import get, get_station_metadata, get_available_timeseries, get_common_indices
 
 
 def verif(
@@ -63,7 +63,24 @@ def verif(
     if '.' not in file_ref:
         # assuming frost reference
         ref = 'frost'
-        station_ids = get_available_timeseries(frost_client_id=file_ref, variable="sum(precipitation_amount PT6H)")
+        metadata = get_station_metadata(frost_client_id=file_ref, wmo=True, country='Norge')
+        station_ids = [id for id in metadata]
+        obs_lats = [metadata[id]["lat"] for id in station_ids]
+        obs_lons = [metadata[id]["lon"] for id in station_ids]
+        obs_elevs = [metadata[id]["elev"] for id in station_ids]
+        # Frost uses SN18700, whereas in Verif we want just 18700
+        obs_ids = [int(id.replace("SN","")) for id in metadata]
+        #self.points = gridpp.Points(obs_lats, obs_lons, obs_elevs)
+        """
+        if None in times:
+            raise Exception
+        if isinstance(times, (list, tuple, np.ndarray)):
+            times = pd.to_datetime(times)
+        times = times.sort_values()
+        ds_ref = read_era5(fields, "/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", times, lead_time)
+        """
+
+        #station_ids = get_available_timeseries(frost_client_id=file_ref, variable="sum(precipitation_amount PT6H)")
     elif file_ref.endswith('.nc') or file_ref.endswith('.txt'):
         # using existing verif file as reference, using the same times and locations
         ref = 'verif'
@@ -111,11 +128,12 @@ def verif(
     for t_, (time, time_idx) in enumerate(pbar):
         pbar.set_description(time.strftime('%Y-%m-%dT%H'))
         unix = int(time.timestamp())
+        lead_time_unix = np.arange(unix, unix + 6*3600*lead_time, 6*3600)
         if time != times[0]:
             ds = get_data(path, time, ens_size)
             if ds.latitude.ndim == 2:
                 ds = flatten(ds, fields)
-        if ref == "zarr":
+        if ref == "zarr": # or ref == "frost":
             data_ref = get_era5_data(ds_ref, int(time_idx), fields, lead_time)
         """
         else:
@@ -139,13 +157,16 @@ def verif(
 
             if ref == "frost":
                 frost_name = map_keys[field]['frost']
-                obs_times, obs_locations, obs_ = get(unix, unix + 6*lead_time*3600, frost_name, file_ref, station_ids=station_ids)
-                obs_ = obs_[::6][:-1]  # Frost returns hourly data
+                obs_times, obs_locations, obs_values = get(unix, unix + 6*lead_time*3600, frost_name, file_ref, station_ids=station_ids)
+                obs_ = np.nan * np.zeros([lead_time, len(obs_locations)], np.float32)
+                for t, call_time in enumerate(lead_time_unix):
+                    idx = np.argwhere(obs_times == call_time)
+                    obs_[t] = obs_values[idx]
                 alt = [loc.elev for loc in obs_locations] 
                 lat = [loc.lat for loc in obs_locations] 
                 lon = [loc.lon for loc in obs_locations] 
                 loc = [loc.id for loc in obs_locations] 
-                eval_ = np.asarray([lat, lon], dtype=np.float32).T
+                eval_ = np.asarray([lon, lat], dtype=np.float32).T
                 data_ = np.array(ds[field])
                 data__ = []
                 for m in range(ens_size):
@@ -154,13 +175,20 @@ def verif(
                         #data__[-1].append(data_interi[m,t](eval_))
                         data__[-1].append(inter(data_[m,t], ds.latitude, ds.longitude, eval_))
                 data_ = np.asarray(data__)
+                if field == "air_temperature_2m":
+                    # elevation correction
+                    alt_inter = inter(ds.altitude, ds.latitude, ds.longitude, eval_)
+                    dh = alt - alt_inter
+                    dT = dh * 6.5 / 1000.
+                    data_ += dT[None, None, :]
+
             elif ref == "verif":
                 obs_ = np.array(ds_ref.obs)[t_]
                 alt = np.array(ds_ref.altitude)
                 lat = np.array(ds_ref.lat)
                 lon = np.array(ds_ref.lon)
                 loc = np.array(ds_ref.location)
-                eval_ = np.asarray([lat, lon], dtype=np.float32).T
+                eval_ = np.asarray([lon, lat], dtype=np.float32).T
                 data_ = np.array(ds[field])
                 data__ = []
                 for m in range(ens_size):
@@ -262,7 +290,7 @@ if __name__ == "__main__":
             '2022-11-12T12',
         ], #pd.date_range(start='2022-01-03T00', end='2022-12-31T18', freq='4W'),
         fields=['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level'], 
-        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c_roll6/inference/epoch_009/predictions/",
+        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c/inference/epoch_077/predictions/",
         #file_ref="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", 
         file_ref="295a464e-e25d-43b5-a560-40d07296c8ea",
         #file_ref = '/pfs/lustrep3/scratch/project_465000454/nordhage/verification/mslp/spatial_noise_n320_2p5km.nc',
@@ -270,7 +298,7 @@ if __name__ == "__main__":
         ens_size=10,
         every=500,
         path_out='/pfs/lustrep3/scratch/project_465000454/nordhage/verification/',
-        label='spatial_noise_n320_2p5km_roll6',
+        label='spatial_noise_n320_2p5km_frost',
         #qs=[0.1, 0.25, 0.5, 0.75, 0.9],
         #thresholds_apply=True,
         #write_members=False,
