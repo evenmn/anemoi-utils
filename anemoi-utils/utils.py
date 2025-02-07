@@ -5,7 +5,6 @@ import cartopy.feature as cfeature
 import xarray as xr
 
 def mesh(lat, lon, increment):
-
     lat = np.arange(lat.min(), lat.max(), increment)
     lon = np.arange(lon.min(), lon.max(), increment)
     lat_grid, lon_grid = np.meshgrid(lat, lon)
