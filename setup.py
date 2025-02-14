@@ -1,5 +1,5 @@
 from setuptools import setup
-#import python-package-template
+#import anemoi-analyse
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
