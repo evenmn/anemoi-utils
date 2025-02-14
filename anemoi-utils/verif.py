@@ -10,7 +10,6 @@ from data import get_data, get_era5_data, read_era5, read_verif
 from map_keys import map_keys
 from utils import flatten, inter
 
-from yrlib_utils import get, get_station_metadata, get_available_timeseries, get_common_indices
 
 
 def verif(
@@ -62,6 +61,8 @@ def verif(
     # find reference
     if '.' not in file_ref:
         # assuming frost reference
+        from yrlib_utils import get, get_station_metadata, get_available_timeseries, get_common_indices
+
         ref = 'frost'
         metadata = get_station_metadata(frost_client_id=file_ref, wmo=True, country='Norge')
         station_ids = [id for id in metadata]
@@ -290,15 +291,15 @@ if __name__ == "__main__":
             '2022-11-12T12',
         ], #pd.date_range(start='2022-01-03T00', end='2022-12-31T18', freq='4W'),
         fields=['air_temperature_2m', 'wind_speed_10m', 'precipitation_amount_acc6h', 'air_pressure_at_sea_level'], 
-        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c/inference/epoch_077/predictions/",
+        path="/pfs/lustrep3/scratch/project_465000454/anemoi/experiments/ni3_c_safcrps_k5_s1/inference/epoch_076/predictions/",
         #file_ref="/pfs/lustrep3/scratch/project_465000454/anemoi/datasets/MEPS/aifs-meps-2.5km-2020-2024-6h-v6.zarr", 
         file_ref="295a464e-e25d-43b5-a560-40d07296c8ea",
         #file_ref = '/pfs/lustrep3/scratch/project_465000454/nordhage/verification/mslp/spatial_noise_n320_2p5km.nc',
         lead_time=40,
         ens_size=10,
-        every=500,
+        #every=500,
         path_out='/pfs/lustrep3/scratch/project_465000454/nordhage/verification/',
-        label='spatial_noise_n320_2p5km_frost',
+        label='spatial_noise_n320_2p5km_filter_frost',
         #qs=[0.1, 0.25, 0.5, 0.75, 0.9],
         #thresholds_apply=True,
         #write_members=False,
