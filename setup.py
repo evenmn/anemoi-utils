@@ -4,13 +4,13 @@ from setuptools import setup
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-setup(name='anemoi-analyze',
+setup(name='anemoi-analyse',
       #version=python-package-template.__version__,
       version="0.0.1",
       description='Anemoi output analysing tools',
       long_description=long_description,
       long_description_content_type="text/markdown",
-      url='http://github.com/evenmn/anemoi-analyze',
+      url='http://github.com/evenmn/anemoi-analyse',
       author='Even Marius Nordhagen',
       author_email='even.nordhagen@gmail.com',
       license='GPL-v3',
