@@ -14,6 +14,6 @@ setup(name='anemoi-analyse',
       author='Even Marius Nordhagen',
       author_email='even.nordhagen@gmail.com',
       license='GPL-v3',
-      packages=['python_package_template'],
+      packages=['anemoi_analyse'],
       include_package_data=True,
       zip_safe=False)
