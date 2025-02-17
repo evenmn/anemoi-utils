@@ -5,7 +5,6 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='anemoi-analyse',
-      #version=python-package-template.__version__,
       version="0.0.1",
       description='Anemoi output analysing tools',
       long_description=long_description,
@@ -16,4 +15,11 @@ setup(name='anemoi-analyse',
       license='GPL-v3',
       packages=['anemoi_analyse'],
       include_package_data=True,
-      zip_safe=False)
+      install_requires=['matplotlib', 'scipy'],
+      entry_points={
+          'console_scripts': [
+              'loss-plotter=anemoi_analyse.cmd_interface:run',
+          ]
+      },
+      zip_safe=False,
+)
