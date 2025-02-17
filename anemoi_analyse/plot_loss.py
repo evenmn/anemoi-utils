@@ -1,20 +1,26 @@
 import re
 from tqdm import tqdm
 import numpy as np
+from scipy.signal import savgol_filter
 
 
 def extract_numbers(line):
+    """Extract all numbers (ints and floats) from string."""
     pattern = re.compile(r"[-+]?(?:\d*\.*\d+)")
     matches = pattern.findall(line)
     return matches
 
 def extract_keywords(line):
+    """Extract all words containing underscore in string."""
     pattern = re.compile(r'(\b\w+_?\w*_?\w*_?\w*)=')
     keywords = pattern.findall(line)
     return keywords
 
 
-def make_table(*file_paths):
+def read_data(*file_paths):
+    """Read data from log file into dictionary. Padding with NaNs
+    if values are missing.
+    """
     content = ''
     for file_path in file_paths:
         # Read the content of the text file
@@ -23,83 +29,85 @@ def make_table(*file_paths):
 
     lines = content.split('\n')
 
-    numbers_float = []
-    all_keywords = ["epoch", "iteration", "elapsed_time", "estimated_time", "speed"]
+    # create dictionary with all static keywords, expected in all lines
+    data = {'epoch': [], 'iteration': [], 'elapsed_time': [], 'estimated_time': [], 'speed': []}
+    nline = 0
     for line in tqdm(lines):
         if not line.startswith('Epoch'):
             continue
-        lst = []
-        numbers = extract_numbers(line)
+        numbers = extract_numbers(line) # extract all numbers from line
+        # continue if only static numbers
         if len(numbers) < 7:
             continue
-        lst.append(float(numbers[0]))
-        lst.append(float(numbers[1]))
+        data['epoch'].append(float(numbers[0]))
+        data['iteration'].append(float(numbers[1]))
+        # hours if numbers > 11, else just seconds and minutes
         if len(numbers) > 11:
-            lst.append(60*float(numbers[2])+float(numbers[3]))
-            lst.append(3600*float(numbers[4])+60*float(numbers[5])+float(numbers[6]))
+            data['elapsed_time'].append(60*float(numbers[2])+float(numbers[3]))
+            data['estimated_time'].append(3600*float(numbers[4])+60*float(numbers[5])+float(numbers[6]))
             next_ = 7
         else:
-            lst.append(60*float(numbers[2])+float(numbers[3]))
-            lst.append(60*float(numbers[4])+float(numbers[5]))
+            data['elapsed_time'].append(60*float(numbers[2])+float(numbers[3]))
+            data['estimated_time'].append(60*float(numbers[4])+float(numbers[5]))
             next_ = 6
-        lst.extend(map(float, numbers[next_:]))
-        numbers_float.append(lst)
-        all_keywords.extend(extract_keywords(line))
-        all_keywords = list(dict.fromkeys(all_keywords))
+        data['speed'].append(float(numbers[next_]))
+        # get all numbers and keywords that are not static
+        dynamic_keywords = extract_keywords(line)
+        dynamic_numbers = list(map(float, numbers[next_+1:]))
+        for keyword, number in zip(dynamic_keywords, dynamic_numbers):
+            try:
+                data[keyword].append(number)
+            except KeyError:
+                data[keyword] = [number]
+        nline += 1
 
-    # pad
-    key_len = len(all_keywords)
-    for it in range(len(numbers_float)):
-        this_len = len(numbers_float[it])
-        if this_len < key_len:
-            diff = key_len - this_len
-            numbers_float[it].extend(diff * [np.nan])
-
-    for it in reversed(range(len(numbers_float))):
-        if len(numbers_float[it]) != key_len:
-            del numbers_float[it]
-
-    return np.asarray(numbers_float, dtype=np.float32), all_keywords
-
-def key_to_arr(key, table, keywords):
-    assert key in keywords
-
-    idx = keywords.index(key)
-    return table[:,idx]
+    # pad to standard lengths
+    for key in data.keys():
+        key_len = len(data[key])
+        diff = nline - key_len 
+        if diff > 0:
+            data[key] = diff * [np.nan] + data[key]
+        data[key] = np.asarray(data[key], dtype=np.float32)
+    return data
                                                     
+def get_total_iteration(data):
+    """Return total iterations."""
+    epochs = data['epoch']
+    iterations = data['iteration']
+    max_iterations = iterations.max()
+    total_iteration = max_iterations * epochs + iterations
+    return total_iteration
 
 if __name__ == "__main__":
-    epochs = []
     val_loss = []
+    total_iterations = []
     for filename in [
             #'/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_c_safcrps_k5_s1.out',
             #'/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_c_safcrps_k5_s1_2.out',
             #'/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_c_safcrps_k5_s1_3.out',
             #'/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_c_safcrps_k5_s1_4.out',
+            #'/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_d.out',
+            #'/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_c_4mem.out',
             '/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_d.out',
+            '/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_d_2.out',
+            '/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_d_3.out',
+            '/pfs/lustrep3/scratch/project_465000454/nordhage/ens-score-anemoi/logs/ni3_d_4.out',
         ]:
-        table, keywords = make_table(filename)
-        np.set_printoptions(threshold=np.inf)
-        epochs.append(key_to_arr('epoch', table, keywords))
-        val_loss.append(key_to_arr('train_mse_step', table, keywords))
+        data = read_data(filename)
 
-
-    epochs = np.concatenate(epochs, axis=0)
-    val_loss = np.concatenate(val_loss, axis=0)
-
-    print(val_loss)
-
-    #epochs = epochs[np.isfinite(val_loss)]
-    #val_loss = val_loss[np.isfinite(val_loss)]
-
-    xy = (epochs, val_loss)
-    #np.save('/leonardo/home/userexternal/enordhag/loss_ni1_a_4m_bs32.npy', xy)
+        total_iteration = get_total_iteration(data)
+        total_iterations.append(total_iteration)
+        val_loss.append(data['train_mse_step'])
 
     import matplotlib.pyplot as plt
 
-    #plt.plot(*xy)
-    plt.plot(val_loss)
-    plt.xlabel("Steps")
-    plt.ylabel("Spatial almost fair CRPS")
-    plt.title("Stage C")
+    labels = ["roll4, lr=5e-7", "roll2, lr=5e-7", "roll2, lr=2.5e-7", "roll4, lr=2.5e-7"]
+
+    for total_iteration, loss, label in zip(total_iterations, val_loss, labels):
+        loss = savgol_filter(loss, 5, 2)
+        plt.plot(total_iteration, loss, label=label)
+    plt.legend(loc='best')
+    plt.xlabel("Iterations")
+    plt.ylabel("CRPS")
+    plt.title("Ensemble rollout")
     plt.show()
